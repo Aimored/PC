@@ -1,53 +1,117 @@
 import sys
 import logging
 from PyQt6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, QLabel,QComboBox,
-    QLineEdit, QPushButton, QMessageBox, QTableWidget, QTableWidgetItem, QTabWidget, QTabBar, QStylePainter, QStyleOptionTab, QStyleOptionTabWidgetFrame, QStyle
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QTabWidget, QLabel,
+    QLineEdit, QPushButton, QMessageBox, QTableWidget, QTableWidgetItem, QComboBox
 )
 import pymysql
 from pymysql import OperationalError
-from PyQt6 import QtCore
+
 logging.basicConfig(level=logging.INFO)
-db_user = "Aimor"
-db_password = "Alex25122005"
 
 
-class VerticalQTabWidget(QTabWidget):
+class JobPositionTab(QWidget):
     def __init__(self):
-        super(VerticalQTabWidget, self).__init__()
-        self.setTabBar(VerticalQTabBar())
-        self.setTabPosition(QTabWidget.TabPosition.West)
+        super().__init__()
 
-    def paintEvent(self, event):
-        painter = QStylePainter(self)
-        option = QStyleOptionTabWidgetFrame()
-        self.initStyleOption(option)
-        option.rect = QtCore.QRect(QtCore.QPoint(self.tabBar().geometry().width(), 0), QtCore.QSize(option.rect.width(), option.rect.height()))
-        painter.drawPrimitive(QStyle.PrimitiveElement.PE_FrameTabWidget, option)
+        # Создаем макет для вкладки
+        layout = QVBoxLayout()
 
-class VerticalQTabBar(QTabBar):
-    def __init__(self, *args, **kwargs):
-        super(VerticalQTabBar, self).__init__(*args, **kwargs)
-        self.setElideMode(QtCore.Qt.TextElideMode.ElideNone)
+        # Метка и поле ввода для должности
+        self.position_label = QLabel("Должность:")
+        self.position_input = QLineEdit()
 
-    def tabSizeHint(self, index):
-        size_hint = super(VerticalQTabBar, self).tabSizeHint(index)
-        size_hint.transpose()
-        return size_hint
+        # Кнопка для добавления должности
+        self.add_button = QPushButton("Добавить должность")
+        self.add_button.clicked.connect(self.add_position)
 
-    def paintEvent(self, event):
-        painter = QStylePainter(self)
-        option = QStyleOptionTab()
-        for index in range(self.count()):
-            self.initStyleOption(option, index)
-            if QApplication.style().objectName() == "macos":
-                option.shape = QTabBar.Shape.RoundedNorth
-                option.position = QStyleOptionTab.TabPosition.Beginning
-            else:
-                option.shape = QTabBar.Shape.RoundedWest
-            painter.drawControl(QStyle.ControlElement.CE_TabBarTabShape, option)
-            option.shape = QTabBar.Shape.RoundedNorth
-            painter.drawControl(QStyle.ControlElement.CE_TabBarTabLabel, option)
+        # Таблица для отображения должностей
+        self.position_table = QTableWidget()
+        self.position_table.setColumnCount(2)
+        self.position_table.setHorizontalHeaderLabels(["ID Должности", "Должности"])
+
+        # Добавляем виджеты в макет
+        layout.addWidget(self.position_label)
+        layout.addWidget(self.position_input)
+        layout.addWidget(self.add_button)
+        layout.addWidget(self.position_table)
+
+        # Устанавливаем макет для вкладки
+        self.setLayout(layout)
+
+        # Загружаем должности из базы данных
+        self.load_positions()
+
+    def add_position(self):
+        position = self.position_input.text()
+        if position:
+            # Явное указание данных для подключения
+            db_user = "Aimor"
+            db_password = "Alex25122005"
+
+            try:
+                logging.info("Подключение к базе данных...")
+                connection = pymysql.connect(
+                    host='localhost',
+                    user=db_user,
+                    password=db_password,
+                    database='pcpc'
+                )
+
+                with connection.cursor() as cursor:
+                    # Вставляем новую запись
+                    query = "INSERT INTO Должности (Должность) VALUES (%s)"
+                    cursor.execute(query, (position,))
+                    connection.commit()
+
+                QMessageBox.information(self, "Успех", "Должность успешно добавлена.")
+                self.load_positions()  # Обновляем таблицу после добавления
+
+            except OperationalError as e:
+                logging.error(f"Ошибка добавления должности: {e}")
+                QMessageBox.critical(self, "Ошибка", f"Ошибка добавления должности: {e}")
+
+            finally:
+                if 'connection' in locals():
+                    connection.close()
+                    logging.info("Соединение закрыто.")
+        else:
+            QMessageBox.warning(self, "Ошибка ввода", "Пожалуйста, введите должность.")
+
+    def load_positions(self):
+        try:
+            # Явное указание данных для подключения
+            db_user = "Aimor"
+            db_password = "Alex25122005"
+
+            logging.info("Подключение к базе данных для загрузки должностей...")
+            connection = pymysql.connect(
+                host='localhost',
+                user=db_user,
+                password=db_password,
+                database='pcpc'
+            )
+
+            with connection.cursor() as cursor:
+                # Получаем список должностей
+                query = "SELECT `id Должности`, Должность FROM Должности"
+                cursor.execute(query)
+                results = cursor.fetchall()
+
+                # Заполняем таблицу данными
+                self.position_table.setRowCount(len(results))
+                for row_index, row_data in enumerate(results):
+                    self.position_table.setItem(row_index, 0, QTableWidgetItem(str(row_data[0])))
+                    self.position_table.setItem(row_index, 1, QTableWidgetItem(row_data[1]))
+
+        except OperationalError as e:
+            logging.error(f"Ошибка загрузки должностей: {e}")
+            QMessageBox.critical(self, "Ошибка", f"Ошибка загрузки должностей: {e}")
+        finally:
+            if 'connection' in locals():
+                connection.close()
+                logging.info("Соединение закрыто после загрузки должностей.")
+
 
 class EmployeeTab(QWidget):
     def __init__(self):
@@ -63,20 +127,26 @@ class EmployeeTab(QWidget):
         self.experience_label = QLabel("Стаж работы:")
         self.experience_input = QLineEdit()
 
+        self.position_label = QLabel("Должность:")
+        self.position_combo = QComboBox()
+
         # Кнопка для добавления сотрудника
         self.add_button = QPushButton("Добавить сотрудника")
         self.add_button.clicked.connect(self.add_employee)
 
         # Таблица для отображения сотрудников
         self.employee_table = QTableWidget()
-        self.employee_table.setColumnCount(3)
-        self.employee_table.setHorizontalHeaderLabels(["ID Сотрудника", "ФИО", "Стаж работы"])
+        self.employee_table.setColumnCount(4)
+        self.employee_table.setHorizontalHeaderLabels(["ID Сотрудника", "ФИО", "Должность","Стаж работы"])
 
         # Добавляем виджеты в макет
+        
         layout.addWidget(self.name_label)
         layout.addWidget(self.name_input)
         layout.addWidget(self.experience_label)
         layout.addWidget(self.experience_input)
+        layout.addWidget(self.position_label)
+        layout.addWidget(self.position_combo)
         layout.addWidget(self.add_button)
         layout.addWidget(self.employee_table)
 
@@ -84,11 +154,44 @@ class EmployeeTab(QWidget):
         self.setLayout(layout)
 
         # Загружаем данные
+        self.load_positions()
         self.load_employees()
+
+    def load_positions(self):
+        """Загружает список должностей для выпадающего списка."""
+        try:
+            db_user = "Aimor"
+            db_password = "Alex25122005"
+
+            connection = pymysql.connect(
+                host='localhost',
+                user=db_user,
+                password=db_password,
+                database='pcpc'
+            )
+
+            with connection.cursor() as cursor:
+                query = "SELECT `id Должности`, Должность FROM Должности"
+                cursor.execute(query)
+                results = cursor.fetchall()
+
+                # Заполняем выпадающий список
+                self.position_combo.clear()
+                for row in results:
+                    self.position_combo.addItem(row[1], userData=row[0])
+
+        except OperationalError as e:
+            logging.error(f"Ошибка загрузки должностей: {e}")
+        finally:
+            if 'connection' in locals():
+                connection.close()
 
     def load_employees(self):
         """Загружает список сотрудников для таблицы."""
         try:
+            db_user = "Aimor"
+            db_password = "Alex25122005"
+
             connection = pymysql.connect(
                 host='localhost',
                 user=db_user,
@@ -101,9 +204,14 @@ class EmployeeTab(QWidget):
                 SELECT 
                     `id Сотрудника`, 
                     `ФИО`, 
+                    `Должности`.`Должность`, 
                     `Стаж работы`
                 FROM 
                     `Сотрудники`
+                JOIN 
+                    `Должности` 
+                ON 
+                    `Сотрудники`.`Должность` = `Должности`.`id Должности`
                 """
                 cursor.execute(query)
                 results = cursor.fetchall()
@@ -113,7 +221,8 @@ class EmployeeTab(QWidget):
                 for row_index, row_data in enumerate(results):
                     self.employee_table.setItem(row_index, 0, QTableWidgetItem(str(row_data[0])))
                     self.employee_table.setItem(row_index, 1, QTableWidgetItem(row_data[1]))
-                    self.employee_table.setItem(row_index, 2, QTableWidgetItem(str(row_data[2])))
+                    self.employee_table.setItem(row_index, 2, QTableWidgetItem(row_data[2]))
+                    self.employee_table.setItem(row_index, 3, QTableWidgetItem(str(row_data[3])))
 
         except OperationalError as e:
             logging.error(f"Ошибка загрузки сотрудников: {e}")
@@ -121,12 +230,17 @@ class EmployeeTab(QWidget):
             if 'connection' in locals():
                 connection.close()
 
+
     def add_employee(self):
         """Добавляет нового сотрудника в базу данных."""
         name = self.name_input.text()
+        position_id = self.position_combo.currentData()
         experience = self.experience_input.text()
 
-        if name and experience.isdigit():
+        if name and position_id and experience.isdigit():
+            db_user = "Aimor"
+            db_password = "Alex25122005"
+
             try:
                 connection = pymysql.connect(
                     host='localhost',
@@ -136,8 +250,8 @@ class EmployeeTab(QWidget):
                 )
 
                 with connection.cursor() as cursor:
-                    query = "INSERT INTO `Сотрудники` (`ФИО`, `Стаж`) VALUES (%s, %s)"
-                    cursor.execute(query, (name, experience))
+                    query = "INSERT INTO `Сотрудники` (`ФИО`, `Должность`, `Стаж`) VALUES (%s, %s, %s)"
+                    cursor.execute(query, (name, position_id, experience))
                     connection.commit()
 
                 QMessageBox.information(self, "Успех", "Сотрудник успешно добавлен.")
@@ -188,6 +302,8 @@ class CategoryTab(QWidget):
     def add_category(self):
         category = self.category_input.text()
         if category:
+            db_user = "Aimor"
+            db_password = "Alex25122005"
 
             try:
                 logging.info("Подключение к базе данных...")
@@ -220,6 +336,8 @@ class CategoryTab(QWidget):
 
     def load_categories(self):
         try:
+            db_user = "Aimor"
+            db_password = "Alex25122005"
 
             logging.info("Подключение к базе данных для загрузки категорий...")
             connection = pymysql.connect(
@@ -295,6 +413,8 @@ class ProductTab(QWidget):
 
     def load_categories(self):
         try:
+            db_user = "Aimor"
+            db_password = "Alex25122005"
 
             logging.info("Подключение к базе данных для загрузки категорий...")
             connection = pymysql.connect(
@@ -329,6 +449,8 @@ class ProductTab(QWidget):
         category_id = self.category_dropdown.currentData()
 
         if name and price and category_id is not None:
+            db_user = "Aimor"
+            db_password = "Alex25122005"
 
             try:
                 logging.info("Подключение к базе данных...")
@@ -361,6 +483,8 @@ class ProductTab(QWidget):
 
     def load_products(self):
         try:
+            db_user = "Aimor"
+            db_password = "Alex25122005"
 
             logging.info("Подключение к базе данных для загрузки товаров...")
             connection = pymysql.connect(
@@ -565,30 +689,37 @@ class MainWindow(QMainWindow):
 
         self.setWindowTitle("Менеджер компании")
 
-        # Используем кастомный виджет вкладок
-        self.tabs = VerticalQTabWidget()
+        # Create tab widget
+        self.tabs = QTabWidget()
 
-        # Создаем вкладки
+        # Create tabs
+        self.job_position_tab = JobPositionTab()
         self.employee_tab = EmployeeTab()
-        # Добавьте другие вкладки, если они есть
         self.category_tab = CategoryTab()
-        self.product_tab = ProductTab()
+        self.product_tab = ProductTab()  # New product tab
         self.sales_tab = SalesTab()
 
-        self.tabs.addTab(self.employee_tab, "Сотрудники")
-        # Добавьте другие вкладки, если они есть
-        self.tabs.addTab(self.category_tab, "Категории")
-        self.tabs.addTab(self.product_tab, "Товары")
         self.tabs.addTab(self.sales_tab, "Продажи")
+        self.tabs.addTab(self.job_position_tab, "Должности")
+        self.tabs.addTab(self.employee_tab, "Сотрудники")
+        self.tabs.addTab(self.category_tab, "Категории")
+        self.tabs.addTab(self.product_tab, "Товары")  # Add the new tab
 
-        # Устанавливаем центральный виджет
+        # Set central widget
         self.setCentralWidget(self.tabs)
+
+    def on_tab_changed(self, index):
+        if index == 1:  # Index of the "Сотрудники" tab
+            self.employee_tab.load_positions()
+
+
 
 def main():
     app = QApplication(sys.argv)
     window = MainWindow()
-    window.showMaximized()  # Открываем приложение на весь экран
+    window.show()
     sys.exit(app.exec())
+
 
 if __name__ == "__main__":
     main()
